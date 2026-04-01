@@ -1,7 +1,7 @@
 # Manual Page Table Walk: Translating Virtual to Physical Addresses from a Kernel Driver
 
 **Author:** 0xMastEB  
-**Date:** February 2025  
+**Date:** March 2026  
 **Tools:** Visual Studio 2022, WDK, WinDbg
 
 ---
