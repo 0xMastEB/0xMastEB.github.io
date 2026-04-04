@@ -8,7 +8,7 @@
 
 ## Overview
 
-I wrote a Windows kernel driver that translates the virtual address of its own `DriverEntry` function into the corresponding physical address in RAM by manually walking the x64 page tables — reimplementing in software what the CPU does in hardware on every single memory access.
+I wrote a Windows kernel driver that translates the virtual address of its own `DriverEntry` function into the corresponding physical address in RAM by manually walking the x64 page tables - reimplementing in software what the CPU does in hardware on every single memory access.
 
 This writeup explains how x64 virtual memory translation works, walks through the driver code, and shows what happens at each level of the page table hierarchy.
 
@@ -20,21 +20,21 @@ Programs don't access physical RAM directly. Every memory access goes through a 
 
 The four levels are:
 
-- **PML4** (Page Map Level 4) — the root, pointed to by the CR3 register
+- **PML4** (Page Map Level 4) - the root, pointed to by the CR3 register
 - **PDPT** (Page Directory Pointer Table)
 - **PD** (Page Directory)
 - **PT** (Page Table)
 
-Each table contains 512 entries (9 bits of index = 512 entries × 8 bytes = 4KB per table). The virtual address itself tells us which entry to read at each level.
+Each table contains 512 entries (9 bits of index = 512 entries x 8 bytes = 4KB per table). The virtual address itself tells us which entry to read at each level.
 
 ### Virtual Address Breakdown (48-bit)
 
 ```
  63    48 47    39 38    30 29    21 20    12 11       0
-┌────────┬────────┬────────┬────────┬────────┬──────────┐
-│ Sign   │ PML4   │ PDPT   │  PD    │  PT    │  Offset  │
-│ Extend │ Index  │ Index  │ Index  │ Index  │ (12 bit) │
-└────────┴────────┴────────┴────────┴────────┴──────────┘
++--------+--------+--------+--------+--------+----------+
+| Sign   | PML4   | PDPT   |  PD    |  PT    |  Offset  |
+| Extend | Index  | Index  | Index  | Index  | (12 bit) |
++--------+--------+--------+--------+--------+----------+
            9 bit    9 bit    9 bit    9 bit    12 bit
 ```
 
@@ -43,7 +43,7 @@ The 12-bit offset at the end addresses a byte within the final 4KB page (2^12 = 
 ### Translation Flow
 
 ```
-CR3 ──> PML4 Table ──> PDPT Table ──> Page Directory ──> Page Table ──> Physical Page
+CR3 --> PML4 Table --> PDPT Table --> Page Directory --> Page Table --> Physical Page
          [index]        [index]         [index]          [index]       + offset
 ```
 
@@ -86,7 +86,7 @@ ULONG64 ReadPhysical(ULONG64 PhysAddr)
 ```c
 VOID WalkPageTables(PVOID VirtualAddress)
 {
-    // Step 0: Read CR3 — the physical address of the PML4 table
+    // Step 0: Read CR3 - the physical address of the PML4 table
     ULONG64 cr3 = __readcr3();
     ULONG64 pml4Phys = cr3 & 0xFFFFFFFFF000;
 
@@ -134,9 +134,9 @@ VOID WalkPageTables(PVOID VirtualAddress)
 
 At each level:
 1. Extract the physical base address from the entry (bits 51:12, masked with `0xFFFFFFFFF000`)
-2. Add the index for the next level × 8 (each entry is 8 bytes)
+2. Add the index for the next level x 8 (each entry is 8 bytes)
 3. Read the entry at that physical address
-4. Check the Present bit — if 0, the translation fails
+4. Check the Present bit - if 0, the translation fails
 5. Move to the next level
 
 The large page check at the PD level handles 2MB pages (PS bit set), which skip the PT level entirely. The physical address is calculated differently: bits 47:21 from the PDE + bits 20:0 from the virtual address.
@@ -156,7 +156,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 }
 ```
 
-The driver walks the page tables for its own `DriverEntry` function — translating the virtual address where this code is loaded into the physical address where it resides in RAM.
+The driver walks the page tables for its own `DriverEntry` function - translating the virtual address where this code is loaded into the physical address where it resides in RAM.
 
 ---
 
@@ -164,10 +164,10 @@ The driver walks the page tables for its own `DriverEntry` function — translat
 
 This isn't just an academic exercise. Understanding page tables at this level is fundamental for:
 
-- **Kernel exploit development** — many exploits manipulate PTEs to gain arbitrary read/write
-- **Anti-cheat / anti-tamper analysis** — systems like BattlEye delete their own PTEs to hide code from memory scanners
-- **Memory forensics** — tools like Volatility walk page tables to reconstruct process memory from physical dumps
-- **Hypervisor development** — EPT (Extended Page Tables) uses the same 4-level structure for guest-to-host translation
+- **Kernel exploit development** - many exploits manipulate PTEs to gain arbitrary read/write
+- **Anti-cheat / anti-tamper analysis** - systems like BattlEye delete their own PTEs to hide code from memory scanners
+- **Memory forensics** - tools like Volatility walk page tables to reconstruct process memory from physical dumps
+- **Hypervisor development** - EPT (Extended Page Tables) uses the same 4-level structure for guest-to-host translation
 
 The CPU does this translation billions of times per second, cached by the TLB. This driver does it once, manually, to make the invisible visible.
 
