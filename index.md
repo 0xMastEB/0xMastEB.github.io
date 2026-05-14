@@ -6,6 +6,7 @@ Security Researcher | Reverse Engineering · Windows Internals · Malware Analys
 
 ## Writeups
 
+- [MetaTrader 4 - Reverse Engineering the EX4 Protection System](./posts/metatrader-analysis)
 - [MRAC.exe - Reversing a VMProtect-Packed Malware Loader](./posts/mrac-analysis)
 - [Manual Page Table Walk - VA to PA Translation from a Kernel Driver](./posts/pte-walk)
 ---
