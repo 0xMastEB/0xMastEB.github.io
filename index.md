@@ -1,11 +1,12 @@
 # 0xMastEB
 
-Security Researcher | Reverse Engineering · Binary Protection Analysis · Windows Internals
+Vulnerability Researcher | Reverse Engineering · Binary Analysis · Windows Internals
 
 ---
 
 ## Research
 
+- [StealC v2 - Static and Dynamic Analysis of a Commodity Infostealer](./posts/stealc-v2-analysis)
 - [MetaTrader 4 - Reverse Engineering the EX4 Protection System](./posts/metatrader-analysis)
 - [MRAC.exe - Reversing a VMProtect-Packed Malware Loader](./posts/mrac-analysis)
 
