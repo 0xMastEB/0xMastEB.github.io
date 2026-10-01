@@ -10,7 +10,7 @@ sample_sha256: 7cd80c56e206d083eb68a411bb4b87409c466de055ebe64aa564f78e1cccfeae
 
 ## Executive Summary
 
-I grabbed this malware on purpose. I downloaded it deliberately to reverse engineer it and see what it actually does. It's an infostealer, so its whole job is to steal data. Through reverse engineering I confirmed it goes after browsers and apps like Chrome, Mozilla/Firefox and Steam: saved credentials, cookies (web sessions, messaging tokens), autofill and wallet data. The full target list is in the analysis below.
+I grabbed this malware on purpose. I downloaded it deliberately to reverse engineer it and see what it actually does. It's an infostealer, so its whole job is to steal data. Through reverse engineering I confirmed it goes after browsers and apps like Chrome, Mozilla/Firefox and Steam: saved credentials, cookies (web sessions), autofill and wallet data. The full target list is in the analysis below.
 
 A few things jumped out at me. Buried in the code there's a language check on the CIS region. If the machine's language is Russian or another CIS locale (Ukrainian, Belarusian, Kazakh, Uzbek) the malware just doesn't run. It's clearly written by someone in that region who doesn't want trouble at home but is happy to infect the rest of the world. There's also an auto kill, a kill date. Past a hardcoded date the function that launches the stealer never gets called, and I spotted this statically in IDA.
 
@@ -32,7 +32,7 @@ On the network side the sample registers with a hardcoded C2 server and ships ev
 | Compiler | Microsoft Visual C++ (MSVC 19.50 / Visual Studio 2026) |
 | Compile timestamp | 2026-02-02 14:27:47 UTC (about 1 day before first seen) |
 | Packer | None (section entropy about 6.19, no high entropy regions) |
-| Builder artifact (PDB path) | `C:\builder_v2\stealc\json.h` |
+| Build-time source path (attribution) | `C:\builder_v2\stealc\json.h` |
 
 Triage note. Detect It Easy reported a clean MSVC x64 binary with no known packer, and the entropy view showed no section above about 6.5, so the payload is not packed and we are looking at the StealC payload directly, not a crypter stub. The import table contains only KERNEL32.dll, which is the first hint that the rest of the API surface is resolved at runtime.
 
@@ -53,7 +53,7 @@ string RC4 key:  67OuaWeIA2
 
 Example: the blob `OEQOAFq33QPi8qXk` goes through base64 decode, then RC4 with key `67OuaWeIA2`, and comes out as `kernel32.dll`.
 
-Two initializer functions populate the string table (16 plus 260 references to the decrypt routine). Decrypting all references statically recovered 276 strings, including the full API surface, browser and wallet artefact names, the C2 endpoint, and the loader command templates. The full list is in the appendix (`decrypted_strings.csv`).
+Two initializer functions populate the string table (16 plus 260 references to the decrypt routine). Decrypting all references statically recovered 276 strings, including the full API surface, browser and wallet artefact names, the C2 endpoint, and the loader command templates.
 
 I recognised the RC4 in the decompiler from the 256 byte state array, the key schedule loop, and the `data[i] ^ S[(S[i]+S[j]) & 0xFF]` keystream XOR.
 
@@ -171,7 +171,7 @@ Cryptographic and config
 String RC4 key    67OuaWeIA2
 Network RC4 key   bfac87d80883578f
 Build ID          JSDIFBD
-Builder path      C:\builder_v2\stealc\json.h
+Build source path C:\builder_v2\stealc\json.h
 ```
 
 Host artefacts
