@@ -8,6 +8,8 @@ sample_sha256: 729ef8e6a3cf1859811f3010b514416231e92ca66c4817cf8d6fce9df427a6a8
 
 # GuLoader: Defeating a Per-Block Cipher and an Exception-Driven Control Flow with a Kernel Dumper
 
+**Jump to:** [Infection Chain](#infection-chain-overview) · [Anti-Analysis](#3-where-dynamic-analysis-stopped-working) · [Kernel Dumper](#4-the-kernel-dumper) · [Block Cipher](#6-the-per-block-cipher) · [Trap Flag](#8-trap-flag-the-control-flow-is-exceptions) · [VEH](#9-the-vectored-exception-handler-recovered) · [API Hashing](#10-api-resolution-by-hash) · [C2](#c2) · [**Detection: YARA + Sigma**](#detection) · [**IOCs**](#indicators-of-compromise-iocs) · [**MITRE ATT&CK**](#mitre-attck-mapping)
+
 ## Executive Summary
 
 I picked GuLoader because of its reputation. It is known for being hard to reverse, and having taken it apart I can confirm the reputation is earned. This is the most defensive piece of code I have worked on so far.
