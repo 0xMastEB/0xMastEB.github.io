@@ -6,6 +6,7 @@ Vulnerability Researcher | Reverse Engineering · Binary Analysis · Windows Int
 
 ## Research
 
+- [GuLoader - Defeating a Per-Block Cipher and an Exception-Driven Control Flow with a Kernel Dumper](./posts/guloader-writeup)
 - [Remcos RAT 3.8.0 Pro - Unpacking a Three-Stage .NET Crypter with Image Steganography](./posts/remcos-writeup)
 - [StealC v2 - Static and Dynamic Analysis of a Commodity Infostealer](./posts/stealc-v2-analysis)
 - [MetaTrader 4 - Reverse Engineering the EX4 Protection System](./posts/metatrader-analysis)
