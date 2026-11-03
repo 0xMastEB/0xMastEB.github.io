@@ -17,7 +17,7 @@ ExistRAT is a native C++ Windows RAT shipped as a 64-bit DLL. When I picked it u
 - Custom TCP protocol, `[1 byte opcode][4 byte length][payload]`, with no encryption and no authentication.
 - The moment it connects, with no operator action, it sends a full system fingerprint, geolocates the victim through ipwho.is, starts a reverse shell and a keylogger, goes after Discord tokens, and reports the victim's active window every 10 seconds.
 - Capabilities: keylogging, screen capture and streaming, webcam and microphone capture, remote shell, remote mouse and keyboard, file manager, registry editor, download and execute with a Microsoft Defender exclusion, and disabling the UAC secure desktop.
-- I wrote a fake C2 in PowerShell, redirected the RAT to it and drove it. The process list and the UAC secure desktop change were confirmed dynamically.
+- I wrote a fake C2 in PowerShell, redirected the RAT to it and drove it. The process list, the UAC secure desktop change and the Defender exclusion command were confirmed dynamically, and the detection rules were retested under a second DLL host.
 
 ## Sample
 
@@ -149,7 +149,7 @@ This is the fingerprint the operator gets, captured by my fake C2:
 }
 ```
 
-It tells the operator at a glance whether the victim is admin, which antivirus is running, and whether a microphone and webcam are there to spy with. `active_window` is the title of whatever window the victim has in front. In my lab it was the rundll32 error box.
+It tells the operator at a glance whether the victim is admin, which antivirus is installed, and whether a microphone and webcam are there to spy with. Installed, not running: my VM reported `Windows Defender` even though I had Defender disabled. `active_window` is the title of whatever window the victim has in front. In my lab it was the rundll32 error box.
 
 The Discord grabber (`Grab_DiscordTokens`, `0x180007890`) walks 5 Discord clients and about 20 Chromium-based browsers, sends what it finds to the C2 and drops `%TEMP%\sys_debug_log.bin`. My VM had no Discord installed, so I only confirmed this one statically.
 
@@ -252,6 +252,8 @@ The command checks `Get-MpPreference` first and adds `%TEMP%` only if it isn't e
 
 The order is the point: the exclusion is added before the download starts, so by the time the payload lands in `%TEMP%`, Defender no longer scans that folder. And it covers the whole folder, not just this file, so anything dropped there later is excluded too.
 
+I confirmed this one later, during the detection retest. I sent `0x40` with `defender` set to true and a URL pointing at nothing, so the download would fail and nothing would run. Sysmon logged `powershell.exe` started by the RAT's host process with exactly the command line above. What I could not confirm is the effect: I had disabled Defender in the VM before the analysis, so `Add-MpPreference` had nothing to talk to. The execution is observed, the exclusion itself comes from the code.
+
 The download itself is plain WinINet: `InternetOpenA` with the user agent `Mozilla/5.0`, then `InternetOpenUrlA` and `InternetReadFile` in 4 KB chunks. The folder comes from `GetTempPathA`. The file keeps the name at the end of the URL if it only contains letters, digits, `-`, `.` and `_`. Otherwise the RAT makes one up: `sys_` plus random letters plus `.exe`, with the random generator seeded from `GetTickCount`.
 
 ## Anti-analysis: none
@@ -273,7 +275,7 @@ Everything here was a plain read in IDA. The only "evasion" is aimed at the vict
 | IP:port | `82.197.70.119:27063/TCP` | C2, hardcoded |
 | URL | `http://ipwho.is/` | GeoIP lookup, User-Agent `Mozilla/5.0 (Windows NT 10.0; Win64; x64)` |
 | User-Agent | `Mozilla/5.0` | Payload download by `0x40` (WinINet) |
-| Process | `cmd.exe` child of the RAT's host process | Reverse shell, started on every C2 connection |
+| Process | `cmd.exe` child of the DLL host process (`rundll32.exe` / `regsvr32.exe` in my tests) | Reverse shell, started on every C2 connection |
 | File | `%TEMP%\sys_debug_log.bin` | Dropped by the Discord token grabber |
 | File | `%TEMP%\<name from URL>` or `%TEMP%\sys_<random letters>.exe` | Payload dropped by `0x40` |
 | Registry | `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\PromptOnSecureDesktop = 0` | Set by `0x96` |
@@ -290,11 +292,11 @@ Everything here was a plain read in IDA. The only "evasion" is aimed at the vict
 | Tactic | Technique | ID | Evidence |
 | --- | --- | --- | --- |
 | Execution | Command and Scripting Interpreter: Windows Command Shell | T1059.003 | `cmd.exe` spawned on every connection by `Shell_AutoStart` (observed) |
-| Execution | Command and Scripting Interpreter: PowerShell | T1059.001 | `Add-MpPreference` in `0x40` (static) |
+| Execution | Command and Scripting Interpreter: PowerShell | T1059.001 | `Add-MpPreference` in `0x40` (observed in Sysmon) |
 | Execution | Native API: `ShellExecuteA` | T1106 | `0x40` runs the downloaded file, `runas` when admin (static) |
 | Persistence | Boot or Logon Autostart Execution: Registry Run Keys | T1547.001 | HKCU `Run` value written by `0x71`, on operator command (static) |
-| Defense Evasion | System Binary Proxy Execution: Rundll32 | T1218.011 | How I ran it in the lab; the real loader is unknown |
-| Defense Evasion | Impair Defenses: Disable or Modify Tools | T1562.001 | Defender exclusion on `%TEMP%`, added before the download (static) |
+| Defense Evasion | System Binary Proxy Execution: Rundll32 | T1218.011 | Lab only: rundll32, and regsvr32 in the retest. The real loader is unknown |
+| Defense Evasion | Impair Defenses: Disable or Modify Tools | T1562.001 | Defender exclusion on `%TEMP%`, attempted before the download (command observed, effect not verified: Defender was off in the lab) |
 | Defense Evasion | Modify Registry | T1112 | `PromptOnSecureDesktop = 0` (observed), registry editor `0x60`–`0x65` (static) |
 | Credential Access | Steal Application Access Token | T1528 | Discord tokens from clients and browsers (static) |
 | Discovery | System Information Discovery | T1082 | Fingerprint `0x05` (observed) |
@@ -375,17 +377,18 @@ falsepositives:
 level: high
 ```
 
-### Sigma: rundll32 geolocating itself
+### Sigma: a non-browser process geolocating itself
 
-ExistRAT calls ipwho.is on every reconnect, roughly every 3 seconds while the C2 is down, so this fires fast. The rule assumes the rundll32 loading I used in the lab; a different loader changes `Image`.
+ExistRAT calls ipwho.is on every reconnect, roughly every 3 seconds while the C2 is down, so this fires fast. The first version of this rule matched only `rundll32.exe`, the host I used in the lab. The retest below showed why that was a mistake, so it now matches any process that isn't a browser.
 
 ```yaml
-title: Rundll32 Resolving ipwho.is GeoIP Service
+title: Non-Browser Process Resolving ipwho.is GeoIP Service
 id: 4f231f38-6f59-44bd-8822-f50dbbab42e1
 status: experimental
-description: rundll32.exe resolving ipwho.is. ExistRAT does this on every C2 connection to geolocate the victim.
+description: A process other than a web browser resolving ipwho.is. ExistRAT does this on every C2 connection to geolocate the victim, from whatever process hosts the DLL.
 author: 0xMastEB
 date: 2026-10-30
+modified: 2026-11-03
 tags:
     - attack.discovery
     - attack.t1614
@@ -394,12 +397,19 @@ logsource:
     category: dns_query
 detection:
     selection:
-        Image|endswith: '\rundll32.exe'
         QueryName: 'ipwho.is'
-    condition: selection
+    filter_browsers:
+        Image|endswith:
+            - '\chrome.exe'
+            - '\msedge.exe'
+            - '\firefox.exe'
+            - '\brave.exe'
+            - '\opera.exe'
+            - '\iexplore.exe'
+    condition: selection and not filter_browsers
 falsepositives:
-    - Unlikely
-level: high
+    - Legitimate tools or scripts that use ipwho.is for geolocation
+level: medium
 ```
 
 ### Sigma: hidden PowerShell excluding TEMP from Defender
@@ -430,6 +440,21 @@ falsepositives:
 level: high
 ```
 
+### Retest: do the rules survive a different DLL host?
+
+After I published, a reader pointed out that rundll32 was my lab loader, not necessarily the attacker's, and suggested running the sample under a different DLL host to see which alerts survive. That separates detecting the RAT from detecting my analysis setup. So I did it: same sample, loaded this time with `regsvr32 existrat.dll`, with Sysmon 15.22 logging, then `0x96` and `0x40` sent from my fake C2.
+
+| Rule | Depends on the host process? | Fired with regsvr32? |
+| --- | --- | --- |
+| UAC secure desktop disabled | No | Yes: Event ID 13, `PromptOnSecureDesktop` set to `DWORD (0x00000000)` by `regsvr32.exe` |
+| PowerShell adding TEMP to Defender exclusions | No | Yes: Event ID 1, `powershell.exe` with the full command line, parent `regsvr32.exe` |
+| ipwho.is, first version (`Image` = `rundll32.exe`) | Yes | **No**: the Event ID 22 was there, but with `Image: regsvr32.exe` |
+| ipwho.is, current version (any non-browser) | No | Yes: Event ID 22, `QueryName: ipwho.is` |
+
+The YARA rule is unaffected: it scans the file, not the process that loads it.
+
+Two more things came out of the same log. Sysmon attributes the DNS query to the process that asked for it, `regsvr32.exe`, not to the Windows DNS service, even when the answer came from the hosts file. That matters, because FakeNet in my first run showed the query leaving from `svchost.exe`. And the auto-started shell shows up clearly: a `cmd.exe` with `ParentImage: regsvr32.exe`, created in the same second as the C2 connection.
+
 ## Conclusion
 
 ExistRAT's author put the effort into features: 50 working commands, live screen and audio streaming, a Discord grabber, a Defender bypass. None of it went into protecting the channel. The C2 is hardcoded, the protocol is plaintext, and there is no authentication.
@@ -442,6 +467,6 @@ The method is what I'd reuse: IDA gave me the full map, and a quick C2 emulator 
 
 Static analysis: Detect It Easy for triage, IDA Pro for everything else. The sample ships with no symbols, so every function name in this writeup (`RAT_MainThread`, `Shell_AutoStart`, `Heartbeat_ActiveWindow`, the `CmdXX_` handlers) is my own annotation, applied as I identified each function.
 
-Dynamic analysis ran in an isolated VirtualBox Windows 10 x64 VM (build 19045) on host-only networking, with FakeNet-NG 3.5 for the first run, then my own PowerShell C2, and Process Monitor for registry activity.
+Dynamic analysis ran in an isolated VirtualBox Windows 10 x64 VM (build 19045) on host-only networking, with FakeNet-NG 3.5 for the first run, then my own PowerShell C2, and Process Monitor for registry activity. The detection retest added Sysmon 15.22 with a minimal config logging process creation, registry writes to the relevant keys, network connections and DNS queries. Microsoft Defender was disabled in the VM for the whole analysis.
 
 Sample obtained from [Triage](https://tria.ge/261002-q192la1tex).
